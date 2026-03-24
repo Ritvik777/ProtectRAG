@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "protectrag"
-version = "0.4.0"
+version = "0.5.0"
 description = "Evals and observability for RAG: prompt-injection screening on stored documents"
 readme = "README.md"
 license = "Apache-2.0"
@@ -43,7 +43,7 @@ license-files = ["LICENSE"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-protectrag = ["py.typed"]
+protectrag = ["py.typed", "data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
