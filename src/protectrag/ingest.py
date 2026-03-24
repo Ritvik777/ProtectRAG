@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from protectrag.callbacks import CallbackRegistry
 from protectrag.context import RunContext
 from protectrag.metrics import MetricsSink
 from protectrag.observability import emit_ingest_event, trace_ingest_screen
@@ -33,6 +34,7 @@ def ingest_document(
     scan: Callable[[str, str], DocumentScanResult] | None = None,
     context: RunContext | None = None,
     metrics: MetricsSink | None = None,
+    callbacks: CallbackRegistry | None = None,
 ) -> IngestResult:
     """
     Full ingest check with observability.
@@ -46,6 +48,7 @@ def ingest_document(
 
     ``context`` attaches run/project metadata to logs (experiment or deploy correlation).
     ``metrics`` receives counters when implementing :class:`~protectrag.metrics.MetricsSink`.
+    ``callbacks`` fires user-defined hooks on block / warn / allow decisions.
     """
     def _run() -> DocumentScanResult:
         if scan is None:
@@ -77,6 +80,8 @@ def ingest_document(
             context=context,
         )
         _emit_metrics(IngestDecision.BLOCK)
+        if callbacks:
+            callbacks.fire_block(text, scan_result)
         return IngestResult(
             decision=IngestDecision.BLOCK,
             scan=scan_result,
@@ -91,6 +96,8 @@ def ingest_document(
             context=context,
         )
         _emit_metrics(IngestDecision.ALLOW_WITH_WARNING)
+        if callbacks:
+            callbacks.fire_warn(text, scan_result)
         return IngestResult(
             decision=IngestDecision.ALLOW_WITH_WARNING,
             scan=scan_result,
@@ -99,6 +106,8 @@ def ingest_document(
 
     emit_ingest_event(scan_result, action="ingest_allowed", context=context)
     _emit_metrics(IngestDecision.ALLOW)
+    if callbacks:
+        callbacks.fire_allow(text, scan_result)
     return IngestResult(
         decision=IngestDecision.ALLOW,
         scan=scan_result,

@@ -9,22 +9,12 @@ try:
 except PackageNotFoundError:  # pragma: no cover - local dev without install
     __version__ = "0.0.0"
 
+from protectrag.async_api import BatchResult, async_scan, async_scan_batch
+from protectrag.callbacks import CallbackRegistry
 from protectrag.context import RunContext
+from protectrag.datasets import load_golden_v1
 from protectrag.evals import EvalCase, EvalReport, GroundTruth, run_eval_dataset
 from protectrag.ingest import IngestDecision, IngestResult, ingest_document
-from protectrag.metrics import InMemoryMetrics, MetricsSink
-from protectrag.observability import (
-    configure_logging,
-    emit_ingest_event,
-    result_to_telemetry_dict,
-    trace_ingest_screen,
-)
-from protectrag.scanner import (
-    DocumentScanResult,
-    InjectionSeverity,
-    scan_document_for_injection,
-)
-from protectrag.semconv import span_attributes_for_ingest_scan
 from protectrag.llm import (
     HybridPolicy,
     HybridScanner,
@@ -32,30 +22,69 @@ from protectrag.llm import (
     LLMScanner,
     scan_document_llm,
 )
+from protectrag.metrics import InMemoryMetrics, MetricsSink
+from protectrag.observability import (
+    configure_logging,
+    emit_ingest_event,
+    result_to_telemetry_dict,
+    trace_ingest_screen,
+)
+from protectrag.retrieval import (
+    RetrievalScreenResult,
+    RetrievedChunk,
+    ScreenedChunk,
+    screen_retrieved_chunks,
+)
+from protectrag.retry import RetryConfig, with_retry
+from protectrag.scanner import (
+    DocumentScanResult,
+    InjectionSeverity,
+    scan_document_for_injection,
+)
+from protectrag.semconv import span_attributes_for_ingest_scan
 
 __all__ = [
     "__version__",
+    # Core
     "DocumentScanResult",
-    "EvalCase",
-    "EvalReport",
-    "GroundTruth",
-    "HybridPolicy",
-    "HybridScanner",
-    "InMemoryMetrics",
     "InjectionSeverity",
     "IngestDecision",
     "IngestResult",
+    "scan_document_for_injection",
+    "ingest_document",
+    # LLM
+    "HybridPolicy",
+    "HybridScanner",
     "LLMScanConfig",
     "LLMScanner",
-    "MetricsSink",
+    "scan_document_llm",
+    # Async / batch
+    "BatchResult",
+    "async_scan",
+    "async_scan_batch",
+    # Retrieval-time
+    "RetrievedChunk",
+    "ScreenedChunk",
+    "RetrievalScreenResult",
+    "screen_retrieved_chunks",
+    # Retry
+    "RetryConfig",
+    "with_retry",
+    # Callbacks
+    "CallbackRegistry",
+    # Evals
+    "EvalCase",
+    "EvalReport",
+    "GroundTruth",
+    "run_eval_dataset",
+    "load_golden_v1",
+    # Observability
     "RunContext",
+    "InMemoryMetrics",
+    "MetricsSink",
     "configure_logging",
     "emit_ingest_event",
-    "ingest_document",
     "result_to_telemetry_dict",
-    "run_eval_dataset",
-    "scan_document_for_injection",
-    "scan_document_llm",
     "span_attributes_for_ingest_scan",
     "trace_ingest_screen",
 ]
