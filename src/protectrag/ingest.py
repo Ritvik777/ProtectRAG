@@ -23,6 +23,14 @@ class IngestResult:
     decision: IngestDecision
     scan: DocumentScanResult
     message: str
+    latency_ms: float = 0.0
+
+
+def _text_preview(text: str, max_len: int = 200) -> str:
+    t = " ".join(text.split())
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 3] + "..."
 
 
 def ingest_document(
@@ -55,7 +63,8 @@ def ingest_document(
             return scan_document_for_injection(text, document_id=document_id)
         return scan(text, document_id)
 
-    scan_result = trace_ingest_screen(document_id, _run)
+    scan_result, latency_ms = trace_ingest_screen(document_id, _run)
+    preview = _text_preview(text)
 
     def _emit_metrics(decision: IngestDecision) -> None:
         if metrics is None:
@@ -71,6 +80,11 @@ def ingest_document(
             float(scan_result.severity.value),
             decision=decision.value,
         )
+        metrics.observe(
+            "protectrag_ingest_latency_ms",
+            latency_ms,
+            decision=decision.value,
+        )
 
     if scan_result.severity >= block_on:
         emit_ingest_event(
@@ -78,6 +92,8 @@ def ingest_document(
             action="ingest_blocked",
             extra={"block_threshold": block_on.name},
             context=context,
+            latency_ms=latency_ms,
+            text_preview=preview,
         )
         _emit_metrics(IngestDecision.BLOCK)
         if callbacks:
@@ -86,6 +102,7 @@ def ingest_document(
             decision=IngestDecision.BLOCK,
             scan=scan_result,
             message=f"Blocked: injection severity {scan_result.severity.name} (threshold {block_on.name})",
+            latency_ms=round(latency_ms, 2),
         )
 
     if scan_result.severity >= warn_on:
@@ -94,6 +111,8 @@ def ingest_document(
             action="ingest_allowed_with_warning",
             extra={"warn_threshold": warn_on.name},
             context=context,
+            latency_ms=latency_ms,
+            text_preview=preview,
         )
         _emit_metrics(IngestDecision.ALLOW_WITH_WARNING)
         if callbacks:
@@ -102,9 +121,15 @@ def ingest_document(
             decision=IngestDecision.ALLOW_WITH_WARNING,
             scan=scan_result,
             message=f"Allowed with warning: severity {scan_result.severity.name}",
+            latency_ms=round(latency_ms, 2),
         )
 
-    emit_ingest_event(scan_result, action="ingest_allowed", context=context)
+    emit_ingest_event(
+        scan_result,
+        action="ingest_allowed",
+        context=context,
+        latency_ms=latency_ms,
+    )
     _emit_metrics(IngestDecision.ALLOW)
     if callbacks:
         callbacks.fire_allow(text, scan_result)
@@ -112,4 +137,5 @@ def ingest_document(
         decision=IngestDecision.ALLOW,
         scan=scan_result,
         message="Clean",
+        latency_ms=round(latency_ms, 2),
     )
