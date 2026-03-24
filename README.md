@@ -10,11 +10,22 @@ From the project root (editable, for development):
 pip install -e ".[dev]"
 ```
 
-Published install (after you publish to PyPI):
+Install from PyPI (after you publish the project — see below):
 
 ```bash
 pip install protectrag
 ```
+
+### Publish this package to PyPI (one-time per release)
+
+The project is a standard setuptools distribution (`pyproject.toml`). From the repo root:
+
+1. **Check the name** — On [pypi.org](https://pypi.org/search/?q=protectrag), confirm `protectrag` is free or change `[project] name` in `pyproject.toml`.
+2. **Build:** `pip install build && python -m build` → creates `dist/*.whl` and `dist/*.tar.gz`.
+3. **Upload:** [Create a PyPI API token](https://pypi.org/manage/account/token/), then `pip install twine && python -m twine upload dist/*` (use TestPyPI first if you prefer: `--repository testpypi`).
+4. **Bump version** in `pyproject.toml` for each new release.
+
+Then any project can depend on **`protectrag>=0.3.0`** instead of a Git URL.
 
 LLM classification (OpenAI-compatible HTTP API via `httpx`):
 
