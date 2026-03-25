@@ -54,13 +54,11 @@ def configure_logging(level: int = logging.INFO, json_format: bool = True) -> No
     handler = logging.StreamHandler()
     if json_format:
 
-        class JsonFormatter(logging.Formatter):
-            """If the log message is already JSON, emit one line; else wrap."""
-
+    
             def format(self, record: logging.LogRecord) -> str:
                 msg = record.getMessage()
                 if msg.startswith("{") and msg.rstrip().endswith("}"):
-                    return msg
+                    
                 return json.dumps(
                     {
                         "level": record.levelname,
