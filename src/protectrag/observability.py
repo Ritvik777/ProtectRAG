@@ -37,6 +37,7 @@ _RULE_DESCRIPTIONS: dict[str, str] = {
     "markdown_injection": "Markdown-based injection (data URIs, event handlers, comments)",
     "indirect_injection": "Deferred attack triggered when text is retrieved for specific queries",
     "payload_splitting": "Instructions split across multiple chunks to evade detection",
+    "ai_agent_workflow_poison": "Text aimed at AI PR/CI bots: bypass security review, auto-approve, or exfil via forged logs",
     "llm_classifier": "Flagged by the LLM-based classifier",
     "llm_parse_error": "LLM returned an unparseable response (treated as suspicious)",
 }
