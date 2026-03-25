@@ -45,7 +45,7 @@ Text going into a RAG vector store can contain **prompt injection** — hidden i
        │
        ▼
   ┌──────────┐    ┌────────────────┐
-  │  Scan    │───▶│ Heuristic (13  │  ← free, fast, local
+  │  Scan    │───▶│ Heuristic (14  │  ← free, fast, local
   │          │    │ rule families)  │
   │          │───▶│ LLM classifier │  ← OpenAI-compatible API
   │          │───▶│ Hybrid         │  ← heuristics first, LLM when needed
@@ -60,7 +60,7 @@ Text going into a RAG vector store can contain **prompt injection** — hidden i
   Logs · Metrics · Callbacks · OTel spans
 ```
 
-### Detection coverage (13 heuristic rule families)
+### Detection coverage (14 heuristic rule families)
 
 | Rule family | Examples |
 |-------------|----------|
@@ -76,8 +76,11 @@ Text going into a RAG vector store can contain **prompt injection** — hidden i
 | Markdown injection | Image event handlers, `data:` URIs, comment overrides |
 | Indirect / deferred injection | "when the user asks X, reply Y instead" |
 | Payload splitting | "this is part 1 of 3, combine with next" |
+| AI PR / CI workflow poison | "ignore security scan failures", "auto-approve PRs", "never flag SQL injection" in agent instructions, forged CI "post logs to https://…" |
 
 Plus an **LLM classifier** for nuanced cases the rules can't catch.
+
+**Try it:** [`examples/scan_pr_agent_samples.py`](examples/scan_pr_agent_samples.py) runs the heuristic + default ingest policy on [`examples/pr_agent_surface_samples.json`](examples/pr_agent_surface_samples.json) (from repo: `PYTHONPATH=src python examples/scan_pr_agent_samples.py`). Add `-v` to print structured ingest logs.
 
 ---
 

@@ -210,6 +210,29 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
         ),
         2,
     ),
+    # ── AI PR / CI agent surfaces (untrusted repo text → write-capable bots) ─
+    (
+        "ai_agent_workflow_poison",
+        re.compile(
+            r"(?i)\b("
+            # CI / pipeline wording where "instructions" is not adjacent to "previous"
+            r"ignore\s+(all\s+)?(previous|prior)\s+(\w+\s+){1,12}instructions?\b|"
+            # PR / policy text pushing reviewers to dismiss findings
+            r"(ignore|dismiss)\s+(all\s+)?security\s+scan\s+failures?\b|"
+            r"approve\s+this\s+pr\b.{0,120}\b(ignore|dismiss)\s+(all\s+)?security\b|"
+            # Repo automation rules that weaken review
+            r"auto[- ]?approve\b.{0,120}\b(prs?|pull\s+requests?|merges?)\b|"
+            r"skip\s+security\s+(review|checks|scans?)\b.{0,80}\b(depend|dep\s+bot|bot)\b|"
+            r"skip\s+security\s+(review|checks)\s+for\s+.{0,40}\b(updates?|dependencies)\b|"
+            # Instruction files telling a bot to hide vulnerability classes
+            r"\bautomated\s+reviewer\b.{0,100}\bnever\s+(flag|report)\b.{0,50}\b(sql|secret|vulnerabilit)|"
+            r"\bcode\s+review\s+bot\b.{0,100}\b(skip|bypass)\s+security\b|"
+            # Exfil phrasing sometimes seen in forged CI logs
+            r"post\s+(logs|artifacts|results|data)\s+to\s+https?://"
+            r")",
+        ),
+        3,
+    ),
 ]
 
 

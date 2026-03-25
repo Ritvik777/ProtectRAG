@@ -9,11 +9,11 @@ from protectrag.scanner import scan_document_for_injection
 
 def test_golden_dataset_loads() -> None:
     cases = load_golden_v1()
-    assert len(cases) == 100
+    assert len(cases) == 106
     injections = [c for c in cases if c.ground_truth == GroundTruth.INJECTION]
     cleans = [c for c in cases if c.ground_truth == GroundTruth.CLEAN]
-    assert len(injections) == 50
-    assert len(cleans) == 50
+    assert len(injections) == 54
+    assert len(cleans) == 52
 
 
 def test_golden_eval_reasonable_recall() -> None:

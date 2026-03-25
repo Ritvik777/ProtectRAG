@@ -37,6 +37,7 @@ _RULE_DESCRIPTIONS: dict[str, str] = {
     "markdown_injection": "Markdown-based injection (data URIs, event handlers, comments)",
     "indirect_injection": "Deferred attack triggered when text is retrieved for specific queries",
     "payload_splitting": "Instructions split across multiple chunks to evade detection",
+    "ai_agent_workflow_poison": "Text aimed at AI PR/CI bots: bypass security review, auto-approve, or exfil via forged logs",
     "llm_classifier": "Flagged by the LLM-based classifier",
     "llm_parse_error": "LLM returned an unparseable response (treated as suspicious)",
 }
@@ -53,13 +54,11 @@ def configure_logging(level: int = logging.INFO, json_format: bool = True) -> No
     handler = logging.StreamHandler()
     if json_format:
 
-        class JsonFormatter(logging.Formatter):
-            """If the log message is already JSON, emit one line; else wrap."""
-
+    
             def format(self, record: logging.LogRecord) -> str:
                 msg = record.getMessage()
                 if msg.startswith("{") and msg.rstrip().endswith("}"):
-                    return msg
+                    
                 return json.dumps(
                     {
                         "level": record.levelname,
