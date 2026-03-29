@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ProtectRAG — Prompt-injection screening for RAG</title>
+    <meta
+      name="description"
+      content="Python library to screen RAG documents for prompt injection: heuristics, LLM hybrid, policies, metrics, and framework integrations."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap nav-inner">
+        <a class="nav-brand" href="#">Protect<span>RAG</span></a>
+        <nav aria-label="Primary">
+          <ul>
+            <li><a href="#what">What</a></li>
+            <li><a href="#how">How it works</a></li>
+            <li><a href="#architecture">Architecture</a></li>
+            <li><a href="#rules">Detection</a></li>
+            <li><a href="#install">Install</a></li>
+            <li><a href="#chat">Q&amp;A chat</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero wrap" id="top">
+        <p class="hero-badge">Open source · PyPI · Python 3.10+</p>
+        <h1>Screen RAG chunks for prompt injection before they reach your model.</h1>
+        <p class="hero-lead">
+          ProtectRAG is a lightweight library: fast <strong>heuristic rules</strong>, optional
+          <strong>OpenAI-compatible LLM</strong> classification, <strong>allow / warn / block</strong> policies,
+          structured logs, metrics, callbacks, and integrations for FastAPI, LangChain, and LlamaIndex.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://pypi.org/project/protectrag/">Install from PyPI</a>
+          <a class="btn btn-ghost" href="https://github.com/Ritvik777/ProtectRAG">View on GitHub</a>
+        </div>
+      </section>
+
+      <section class="wrap" id="what">
+        <h2>What it is</h2>
+        <div class="prose">
+          <p>
+            Text in your knowledge base can contain hidden instructions (prompt injection). When a retriever
+            returns that chunk, the assistant may obey those instructions instead of your app policy.
+            ProtectRAG analyzes each chunk’s <strong>text</strong> and assigns severity using regex-based
+            detectors and/or an LLM, then you decide whether to index it, quarantine it, or drop it at
+            retrieval time.
+          </p>
+          <p>
+            The library does <strong>not</strong> connect to vector databases or host an API — you invoke it from
+            your ingestion pipeline, workers, or app server.
+          </p>
+        </div>
+      </section>
+
+      <section class="wrap" id="how">
+        <h2>How it works</h2>
+        <p class="prose">High-level flow from raw text to policy and observability.</p>
+        <div class="diagram-box">
+          <pre class="mermaid">
+flowchart TB
+  T[Text chunk + document_id] --> S[Scan]
+  S --> H[Heuristics: 13+ rule families]
+  S --> L[Optional: LLM classifier]
+  S --> Y[Hybrid: heuristics first, LLM when needed]
+  H --> P[Policy]
+  L --> P
+  Y --> P
+  P --> A{Decision}
+  A -->|below thresholds| AL[ALLOW]
+  A -->|medium| W[ALLOW_WITH_WARNING]
+  A -->|high| B[BLOCK]
+  AL --> O[Logs · Metrics · Callbacks · OTel]
+  W --> O
+  B --> O
+          </pre>
+        </div>
+
+        <h3>Ingest vs retrieval</h3>
+        <div class="diagram-box">
+          <pre class="mermaid">
+flowchart LR
+  subgraph ingest["Before index"]
+    D[Your document] --> E[embed + vector DB]
+    PR[ProtectRAG ingest] -.->|screen first| D
+  end
+  subgraph retr["After retrieve"]
+    Q[User query] --> R[Retriever]
+    R --> C[Chunks]
+    C --> PR2[ProtectRAG screen_retrieved_chunks]
+    PR2 --> L2[LLM context]
+  end
+          </pre>
+        </div>
+      </section>
+
+      <section class="wrap" id="architecture">
+        <h2>Architecture</h2>
+        <p class="prose">Main modules and how they connect inside the package.</p>
+        <div class="diagram-box">
+          <pre class="mermaid">
+flowchart TB
+  subgraph core["protectrag core"]
+    scanner[scanner.py — heuristics]
+    ingest[ingest.py — policy + events]
+    llm[llm.py — LLM + hybrid]
+    async_api[async_api.py — batch / async_scan_fn]
+    retrieval[retrieval.py — chunk screening]
+    obs[observability.py]
+    metrics[metrics.py]
+    retry[retry.py]
+  end
+  subgraph integ["integrations/"]
+    fc[fastapi]
+    lc[langchain]
+    li[llamaindex]
+  end
+  scanner --> ingest
+  llm --> ingest
+  ingest --> obs
+  ingest --> metrics
+  retrieval --> scanner
+  retrieval --> async_api
+  fc --> ingest
+  lc --> scanner
+  li --> scanner
+          </pre>
+        </div>
+
+        <div class="grid-2" style="margin-top: 1.5rem">
+          <div class="card">
+            <h4>Async &amp; scale</h4>
+            <p>
+              <code>async_scan_batch</code> with concurrency limits and chunking, Redis-backed LLM cache,
+              parallel LangChain/LlamaIndex transforms, and httpx connection pool tuning.
+            </p>
+          </div>
+          <div class="card">
+            <h4>Quality</h4>
+            <p>
+              Golden dataset and <code>run_eval_dataset</code> for regression testing when you change rules or
+              models.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="wrap" id="rules">
+        <h2>Heuristic detection (sample)</h2>
+        <p class="prose">
+          Thirteen documented rule families; the library ships compiled patterns for speed. Examples:
+        </p>
+        <table class="rule-table">
+          <thead>
+            <tr>
+              <th>Family</th>
+              <th>Examples</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Instruction override</td>
+              <td>“ignore previous instructions”, “you are now…”, “act as if”</td>
+            </tr>
+            <tr>
+              <td>Multilingual</td>
+              <td>Chinese, Japanese, French, Spanish, German, Arabic, Korean overrides</td>
+            </tr>
+            <tr>
+              <td>Role delimiters</td>
+              <td><code>&lt;|system|&gt;</code>, <code>[SYSTEM]:</code>, fake role blocks</td>
+            </tr>
+            <tr>
+              <td>Exfiltration</td>
+              <td>“send docs to URL”, markdown/HTML exfil patterns</td>
+            </tr>
+            <tr>
+              <td>Obfuscation</td>
+              <td>Base64/rot13 hints, zero-width &amp; bidi Unicode</td>
+            </tr>
+            <tr>
+              <td>Indirect</td>
+              <td>“When the user asks X, reply Y instead”</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="prose">
+          See the full table in the
+          <a href="https://github.com/Ritvik777/ProtectRAG/blob/main/README.md">README on GitHub</a>.
+        </p>
+      </section>
+
+      <section class="wrap" id="install">
+        <h2>Install</h2>
+        <pre class="install">pip install protectrag                    # core, zero required deps
+pip install "protectrag[llm]"             # + httpx for LLM
+pip install "protectrag[langchain]"       # LangChain
+pip install "protectrag[llamaindex]"      # LlamaIndex
+pip install "protectrag[fastapi]"         # FastAPI
+pip install "protectrag[otel]"            # OpenTelemetry
+pip install "protectrag[redis]"           # shared LLM cache</pre>
+        <p class="prose">
+          Quick usage:
+          <code>ingest_document(text, document_id=...)</code> with optional
+          <code>scan=hybrid.scan</code>, or <code>screen_retrieved_chunks</code> on retrieved chunks.
+        </p>
+      </section>
+
+      <section class="wrap chat-section" id="chat">
+        <h2>Q&amp;A chat</h2>
+        <p class="prose" style="text-align: center; max-width: 36rem; margin: 0 auto 1.25rem">
+          Ask in plain language. This panel runs entirely in your browser (static GitHub Pages) — answers are
+          scripted from project docs, not a live model.
+        </p>
+
+        <div class="chat-shell">
+          <div class="chat-header">
+            <strong>ProtectRAG guide</strong> — try the chips or type a question
+          </div>
+          <div class="chat-log" id="chat-log" aria-live="polite">
+            <div class="msg msg-bot">
+              Hi — ask what ProtectRAG is, how to install, hybrid vs heuristic, FastAPI, Redis cache, evals, or
+              how to contribute. For anything else, use GitHub Issues.
+            </div>
+          </div>
+          <div class="chips">
+            <button type="button" class="chip" data-q="What is ProtectRAG?">What is ProtectRAG?</button>
+            <button type="button" class="chip" data-q="How do I install from PyPI?">Install</button>
+            <button type="button" class="chip" data-q="Explain hybrid and LLM mode">Hybrid &amp; LLM</button>
+            <button type="button" class="chip" data-q="Screen chunks after retrieval">Retrieval screening</button>
+            <button type="button" class="chip" data-q="FastAPI integration">FastAPI</button>
+            <button type="button" class="chip" data-q="Redis cache for scale">Redis cache</button>
+          </div>
+          <div class="chat-input-row">
+            <input
+              id="chat-input"
+              type="text"
+              placeholder="Type a question…"
+              autocomplete="off"
+              aria-label="Your question"
+            />
+            <button type="button" class="btn btn-primary" id="chat-send">Send</button>
+          </div>
+        </div>
+        <p class="chat-disclaimer">
+          For production support and feature requests, use
+          <a href="https://github.com/Ritvik777/ProtectRAG/issues">GitHub Issues</a>. License: Apache 2.0.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <p>
+          <a href="https://github.com/Ritvik777/ProtectRAG">GitHub</a> ·
+          <a href="https://pypi.org/project/protectrag/">PyPI</a> ·
+          <a href="https://github.com/Ritvik777/ProtectRAG/blob/main/README.md">README</a> ·
+          <a href="https://github.com/Ritvik777/ProtectRAG/blob/main/CONTRIBUTING.md">Contributing</a>
+        </p>
+        <p>ProtectRAG — not affiliated with any vector database or LLM vendor.</p>
+      </div>
+    </footer>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "dark",
+        securityLevel: "loose",
+        themeVariables: {
+          primaryColor: "#1a222c",
+          primaryTextColor: "#e8eaed",
+          primaryBorderColor: "#3dd6c3",
+          lineColor: "#9aa3ad",
+          secondaryColor: "#141a21",
+          tertiaryColor: "#0c0f12",
+        },
+      });
+    </script>
+    <script src="js/site.js"></script>
+  </body>
+</html>

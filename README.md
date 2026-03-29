@@ -6,7 +6,7 @@
 
 **Screen RAG documents for prompt injection, apply allow / warn / block policies, and export logs, metrics, and eval reports** — as a lightweight Python library with zero required dependencies.
 
-**Quick links:** [PyPI](https://pypi.org/project/protectrag/) · [Issues](https://github.com/Ritvik777/ProtectRAG/issues) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+**Quick links:** [Website](https://ritvik777.github.io/ProtectRAG/) (GitHub Pages — enable in repo Settings → Pages → `/docs`) · [PyPI](https://pypi.org/project/protectrag/) · [Issues](https://github.com/Ritvik777/ProtectRAG/issues) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 ---
 

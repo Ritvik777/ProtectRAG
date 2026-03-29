@@ -1,0 +1,9 @@
+include LICENSE
+include README.md
+include CONTRIBUTING.md
+include SECURITY.md
+recursive-include docs *.md
+recursive-include docs *.html
+recursive-include docs/css *.css
+recursive-include docs/js *.js
+include docs/.nojekyll
