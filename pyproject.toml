@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "protectrag"
-version = "0.5.0"
+version = "0.6.0"
 description = "Evals and observability for RAG: prompt-injection screening on stored documents"
 readme = "README.md"
 license = "Apache-2.0"
@@ -34,7 +34,16 @@ otel = ["opentelemetry-api>=1.20.0", "opentelemetry-sdk>=1.20.0"]
 langchain = ["langchain-core>=0.1.0"]
 llamaindex = ["llama-index-core>=0.10.0"]
 fastapi = ["fastapi>=0.100.0", "starlette>=0.27.0"]
-dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "build>=1.0", "httpx>=0.25.0", "python-dotenv>=1.0.0", "twine>=5.0"]
+redis = ["redis>=4.5.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23.0",
+    "build>=1.0",
+    "httpx>=0.25.0",
+    "python-dotenv>=1.0.0",
+    "twine>=5.0",
+    "fakeredis>=2.20.0",
+]
 
 [tool.setuptools]
 license-files = ["LICENSE"]

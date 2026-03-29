@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
-from protectrag.ingest import IngestDecision, IngestResult, ingest_document
+from protectrag.async_api import AsyncScanFn
+from protectrag.ingest import IngestResult, ingest_document, ingest_document_async
 from protectrag.scanner import DocumentScanResult, InjectionSeverity, scan_document_for_injection
 
 try:
@@ -56,6 +58,34 @@ def screen_text_dependency(
     return _dep
 
 
+def screen_text_dependency_async(
+    *,
+    scan_fn: ScanFn | None = None,
+    async_scan_fn: AsyncScanFn | None = None,
+    block_on: InjectionSeverity = InjectionSeverity.HIGH,
+    warn_on: InjectionSeverity = InjectionSeverity.MEDIUM,
+) -> Callable[..., Any]:
+    """
+    Async FastAPI dependency: use with ``async_scan_fn`` for :meth:`~protectrag.llm.HybridScanner.ascan`
+    or ``scan_fn`` for sync scans (executed in a thread pool inside :func:`~protectrag.ingest.ingest_document_async`).
+    """
+    if scan_fn is not None and async_scan_fn is not None:
+        raise ValueError("Pass at most one of scan_fn and async_scan_fn")
+    fn = scan_fn or (lambda t, d: scan_document_for_injection(t, document_id=d))
+
+    async def _dep(text: str, doc_id: str = "unknown") -> IngestResult:
+        return await ingest_document_async(
+            text,
+            document_id=doc_id,
+            block_on=block_on,
+            warn_on=warn_on,
+            scan=fn if async_scan_fn is None else None,
+            async_scan=async_scan_fn,
+        )
+
+    return _dep
+
+
 def create_screening_middleware(
     *,
     scan_fn: ScanFn | None = None,
@@ -96,7 +126,7 @@ def create_screening_middleware(
             if not isinstance(text, str) or not text.strip():
                 return await call_next(request)
             doc_id = str(body.get(doc_id_field, "unknown"))
-            r = fn(text, doc_id)
+            r = await asyncio.to_thread(fn, text, doc_id)
             if r.severity >= block_on:
                 return JSONResponse(
                     status_code=422,

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from protectrag.context import RunContext
 from protectrag.scanner import DocumentScanResult
@@ -18,7 +20,7 @@ _logger = logging.getLogger("protectrag")
 try:
     from opentelemetry import trace  # type: ignore
 
-    _tracer = trace.get_tracer("protectrag", "0.5.0")
+    _tracer = trace.get_tracer("protectrag", "0.6.0")
     _HAS_OTEL = True
 except Exception:  # pragma: no cover - optional dependency
     _tracer = None
@@ -78,6 +80,22 @@ def configure_logging(level: int = logging.INFO, json_format: bool = True) -> No
     _logger.setLevel(level)
 
 
+def _should_emit_log_for_context(context: RunContext | None, action: str) -> bool:
+    if context is None:
+        return True
+    if action == "ingest_blocked":
+        rate = context.log_sample_rate_block
+    elif action == "ingest_allowed_with_warning":
+        rate = context.log_sample_rate_warn
+    else:
+        return True
+    if rate >= 1.0:
+        return True
+    if rate <= 0.0:
+        return False
+    return random.random() < rate
+
+
 def _build_rule_explanations(matched_rules: list[str]) -> list[dict[str, str]]:
     return [
         {"rule": r, "description": _RULE_DESCRIPTIONS.get(r, r)}
@@ -102,6 +120,11 @@ def emit_ingest_event(
     Pass :class:`~protectrag.context.RunContext` to correlate with experiments
     or production deployments (run_id, project, environment).
     """
+    if action == "ingest_allowed" and not _logger.isEnabledFor(logging.DEBUG):
+        return
+    if not _should_emit_log_for_context(context, action):
+        return
+
     explanations = _build_rule_explanations(result.matched_rules)
     rationale = result.rationale
     if not rationale and explanations:
@@ -159,6 +182,31 @@ def trace_ingest_screen(
         span.set_attribute("protectrag.document_id", document_id)
         t0 = time.perf_counter()
         result = fn()
+        elapsed = (time.perf_counter() - t0) * 1000
+        span.set_attribute("protectrag.severity", result.severity.name)
+        span.set_attribute("protectrag.score", result.score)
+        span.set_attribute("protectrag.alert", result.should_alert)
+        span.set_attribute("protectrag.detector", result.detector)
+        span.set_attribute("protectrag.latency_ms", elapsed)
+        return result, elapsed
+
+
+async def trace_ingest_screen_async(
+    document_id: str,
+    fn: Callable[[], Awaitable[DocumentScanResult]],
+    *,
+    span_name: str = "protectrag.ingest_screen",
+) -> tuple[DocumentScanResult, float]:
+    """Async variant of :func:`trace_ingest_screen` for non-blocking scan callables."""
+    if not _HAS_OTEL or _tracer is None:
+        t0 = time.perf_counter()
+        result = await fn()
+        elapsed = (time.perf_counter() - t0) * 1000
+        return result, elapsed
+    with _tracer.start_as_current_span(span_name) as span:
+        span.set_attribute("protectrag.document_id", document_id)
+        t0 = time.perf_counter()
+        result = await fn()
         elapsed = (time.perf_counter() - t0) * 1000
         span.set_attribute("protectrag.severity", result.severity.name)
         span.set_attribute("protectrag.score", result.score)

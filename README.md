@@ -6,10 +6,13 @@
 
 **Screen RAG documents for prompt injection, apply allow / warn / block policies, and export logs, metrics, and eval reports** — as a lightweight Python library with zero required dependencies.
 
+**Quick links:** [PyPI](https://pypi.org/project/protectrag/) · [Issues](https://github.com/Ritvik777/ProtectRAG/issues) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+
 ---
 
 ## Table of contents
 
+- [Requirements](#requirements)
 - [What it is](#what-it-is)
 - [How it works](#how-it-works)
 - [Install](#install)
@@ -26,9 +29,21 @@
 - [UI / visual analysis](#ui--visual-analysis)
 - [Vector database compatibility](#vector-database-compatibility)
 - [Limitations](#limitations)
+- [Community & support](#community--support)
+- [Contributing](#contributing)
+- [Security](#security)
 - [Development](#development)
+- [Repository layout](#repository-layout)
 - [Publishing new versions](#publishing-new-versions)
 - [License](#license)
+
+---
+
+## Requirements
+
+- **Python 3.10+** (see [`pyproject.toml`](pyproject.toml))
+- **Core install:** no mandatory third-party dependencies
+- **Optional extras:** `llm`, `langchain`, `llamaindex`, `fastapi`, `otel`, `redis` — see [Install](#install)
 
 ---
 
@@ -90,6 +105,7 @@ pip install "protectrag[langchain]"       # + LangChain integration
 pip install "protectrag[llamaindex]"      # + LlamaIndex integration
 pip install "protectrag[fastapi]"         # + FastAPI middleware/dependency
 pip install "protectrag[otel]"            # + OpenTelemetry tracing
+pip install "protectrag[redis]"           # + Redis-backed LLM result cache (multi-replica)
 pip install "protectrag[llm,fastapi]"     # combine extras
 ```
 
@@ -134,6 +150,8 @@ with LLMScanner.from_env() as llm:
     )
 ```
 
+**Shared Redis cache (multi-replica):** `pip install "protectrag[redis]"`, then pass `RedisLLMClassificationCache(redis.Redis(...))` as `LLMScanner(..., shared_cache=cache)` or `LLMScanner.from_env(shared_cache=cache)` so workers dedupe identical bodies and reduce LLM spend.
+
 ---
 
 ## Retrieval-time screening
@@ -153,6 +171,8 @@ safe_texts = result.passed_texts()  # only clean chunks
 print(f"Blocked {result.n_blocked} of {result.total} chunks")
 ```
 
+Use `screen_retrieved_chunks(..., max_workers=8)` for parallel **sync** screening in thread pools, or `await screen_retrieved_chunks_async(..., max_concurrency=10)` (and optional `async_scan_fn=hybrid.ascan`) in async apps.
+
 ---
 
 ## Async & batch API
@@ -168,6 +188,10 @@ items = [("chunk text 1", "id-1"), ("chunk text 2", "id-2"), ...]
 result = asyncio.run(async_scan_batch(items, max_concurrency=10))
 print(result.summary())  # {"total": ..., "blocked": ..., "allowed": ...}
 ```
+
+- `async_scan_batch(..., batch_chunk_size=2000)` avoids scheduling millions of tasks at once.
+- Pass `async_scan_fn=hybrid.ascan` for native async hybrid/LLM scans (no thread wrapper).
+- `ingest_document_async` and `trace_ingest_screen_async` mirror the sync ingest path for FastAPI/async services.
 
 ---
 
@@ -202,7 +226,7 @@ ingest_document(text, document_id="d1", callbacks=cb)
 ```python
 from protectrag.integrations.langchain import ProtectRAGFilter
 
-guard = ProtectRAGFilter()
+guard = ProtectRAGFilter()  # parallel screening across docs (tune with max_workers=1 for sequential)
 docs = retriever.get_relevant_documents(query)
 safe_docs = guard.transform_documents(docs)  # injected docs removed
 ```
@@ -221,10 +245,11 @@ query_engine = index.as_query_engine(
 
 ```python
 from fastapi import FastAPI
-from protectrag.integrations.fastapi import create_screening_middleware
+from protectrag.integrations.fastapi import create_screening_middleware, screen_text_dependency_async
 
 app = FastAPI()
 app.add_middleware(create_screening_middleware(paths=["/api/ingest"]))
+# Async routes: use screen_text_dependency_async(async_scan_fn=hybrid.ascan) with Depends(...)
 ```
 
 ---
@@ -261,6 +286,8 @@ ctx = RunContext(project="acme-rag", environment="prod")
 ingest_document(text, document_id="d1", context=ctx)
 # Emits JSON: {"event":"rag_document_screen","action":"ingest_blocked",...,"run_id":"...","project":"acme-rag"}
 ```
+
+`RunContext` also supports **`log_sample_rate_block`** and **`log_sample_rate_warn`** (0.0–1.0) to sample high-volume structured logs; metrics and callbacks are always recorded.
 
 ### Metrics
 
@@ -310,6 +337,8 @@ Optional environment variables (LLM mode only — see [`.env.example`](.env.exam
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible server |
 | `PROTECTRAG_LLM_MODEL` | `gpt-4o-mini` | Classification model |
 
+`LLMScanConfig` also exposes **`http_max_connections`** / **`http_max_keepalive_connections`** for httpx pool sizing under load.
+
 Heuristic-only usage needs **none** of these.
 
 ---
@@ -320,18 +349,22 @@ Heuristic-only usage needs **none** of these.
 |--------|------|
 | `scan_document_for_injection` | Heuristic scan → `DocumentScanResult` |
 | `ingest_document` | Scan + policy + logs/metrics/callbacks |
-| `screen_retrieved_chunks` | Retrieval-time filtering |
-| `async_scan`, `async_scan_batch` | Async + concurrent batch scanning |
-| `LLMScanner`, `HybridScanner` | LLM / hybrid classification |
-| `with_retry`, `RetryConfig` | LLM retry + heuristic fallback |
+| `ingest_document_async` | Same pipeline for async classifiers / FastAPI |
+| `screen_retrieved_chunks` | Retrieval-time filtering (`max_workers` for threads) |
+| `screen_retrieved_chunks_async` | Async concurrent retrieval screening |
+| `async_scan`, `async_scan_batch`, `AsyncScanFn` | Async + batch (`async_scan_fn`, `batch_chunk_size`) |
+| `LLMScanner`, `HybridScanner` | LLM / hybrid (`ascan`, `shared_cache`, httpx limits) |
+| `RedisLLMClassificationCache`, `LLMClassificationCache` | Cross-replica LLM result cache |
+| `with_retry`, `with_retry_async`, `RetryConfig` | Sync / async LLM retry + heuristic fallback |
 | `CallbackRegistry` | `on_block` / `on_warn` / `on_allow` hooks |
 | `load_golden_v1`, `run_eval_dataset` | Golden dataset + eval reports |
 | `RunContext`, `InMemoryMetrics` | Run correlation + metrics |
 | `configure_logging`, `emit_ingest_event` | Structured JSON logging |
+| `trace_ingest_screen`, `trace_ingest_screen_async` | Latency + optional OTel spans |
 | `span_attributes_for_ingest_scan` | OTel span attributes |
 | `ProtectRAGFilter` | LangChain document transformer |
 | `ProtectRAGPostprocessor` | LlamaIndex node postprocessor |
-| `create_screening_middleware` | FastAPI middleware |
+| `create_screening_middleware`, `screen_text_dependency_async` | FastAPI middleware + async Depends |
 
 ---
 
@@ -360,15 +393,54 @@ Works with **every** vector store — Pinecone, Qdrant, Weaviate, Milvus, pgvect
 
 ---
 
+## Community & support
+
+- **Bug reports & feature requests:** [GitHub Issues](https://github.com/Ritvik777/ProtectRAG/issues)
+- **Usage questions:** Open an issue with your Python version, `protectrag` version, and a minimal example if possible
+- **Project home & source:** [github.com/Ritvik777/ProtectRAG](https://github.com/Ritvik777/ProtectRAG)
+
+---
+
+## Contributing
+
+We welcome contributions: bug fixes, documentation improvements, tests, heuristic tuning (with eval impact), and careful API extensions.
+
+Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** for local setup, how to run tests, expectations for pull requests, and where code lives in the tree.
+
+---
+
+## Security
+
+To report a **security vulnerability** privately, follow **[SECURITY.md](SECURITY.md)** (use GitHub Security Advisories rather than a public issue when disclosure could harm users).
+
+---
+
 ## Development
 
 ```bash
 git clone https://github.com/Ritvik777/ProtectRAG.git
 cd ProtectRAG
+python -m venv .venv && source .venv/bin/activate  # optional
 pip install -e ".[dev]"
-pytest tests/ -v          # 44 tests
+pytest tests/ -v          # 60+ tests
 python -m build           # build wheel + sdist
 ```
+
+Full contributor workflow, PR checklist, and conventions: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+---
+
+## Repository layout
+
+| Path | Purpose |
+|------|---------|
+| [`src/protectrag/`](src/protectrag/) | Library package (`scanner`, `ingest`, `llm`, `async_api`, `retrieval`, `integrations`, …) |
+| [`tests/`](tests/) | Pytest suite |
+| [`src/protectrag/data/`](src/protectrag/data/) | Bundled data (e.g. golden eval set) |
+| [`notebooks/`](notebooks/) | Example Jupyter workflow |
+| [`docs/`](docs/) | Extra documentation pointers |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute |
+| [`SECURITY.md`](SECURITY.md) | Vulnerability reporting |
 
 ---
 

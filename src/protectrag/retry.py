@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 import time
 from dataclasses import dataclass
-from typing import Any, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from protectrag.scanner import DocumentScanResult, scan_document_for_injection
 
@@ -64,6 +66,46 @@ def with_retry(
                     attempt + 1, cfg.max_retries, delay, status, document_id,
                 )
                 time.sleep(delay)
+
+    if cfg.fallback_to_heuristic:
+        _logger.warning(
+            "LLM scan failed after %d retries for doc=%s; falling back to heuristic. error=%s",
+            cfg.max_retries, document_id, last_exc,
+        )
+        return scan_document_for_injection(text, document_id=document_id)
+
+    raise last_exc  # type: ignore[misc]
+
+
+async def with_retry_async(
+    fn: Callable[[], Awaitable[DocumentScanResult]],
+    *,
+    text: str,
+    document_id: str,
+    config: RetryConfig | None = None,
+) -> DocumentScanResult:
+    """
+    Async variant of :func:`with_retry`: uses ``await asyncio.sleep`` for backoff
+    instead of blocking ``time.sleep``.
+    """
+    cfg = config or RetryConfig()
+    last_exc: Exception | None = None
+
+    for attempt in range(cfg.max_retries + 1):
+        try:
+            return await fn()
+        except Exception as exc:
+            last_exc = exc
+            status = _extract_status(exc)
+            if status is not None and status not in cfg.retryable_status_codes:
+                break
+            if attempt < cfg.max_retries:
+                delay = _sleep_for(attempt, cfg)
+                _logger.warning(
+                    "Retry %d/%d after %.1fs (status=%s, doc=%s)",
+                    attempt + 1, cfg.max_retries, delay, status, document_id,
+                )
+                await asyncio.sleep(delay)
 
     if cfg.fallback_to_heuristic:
         _logger.warning(

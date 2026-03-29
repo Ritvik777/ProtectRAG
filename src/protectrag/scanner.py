@@ -241,12 +241,18 @@ def scan_document_for_injection(
     text: str,
     *,
     document_id: str = "unknown",
+    early_exit: bool = False,
 ) -> DocumentScanResult:
     """
     Scan raw text for likely prompt-injection content.
 
     This is a **heuristic** screen (fast, no LLM). Use it at ingest time and
     optionally combine with a classifier in production.
+
+    If ``early_exit`` is True, stop after enough rules match to classify as HIGH
+    (``max_weight >= 3`` or ``len(matched) >= 3``). This is faster on hostile
+    text but may omit some ``matched_rules`` and yield a lower ``score`` than a
+    full pass.
     """
     if not text or not text.strip():
         return DocumentScanResult(
@@ -269,6 +275,8 @@ def scan_document_for_injection(
             max_weight = max(max_weight, weight)
             span = m.group(0)
             snippets.append(_clip(span))
+            if early_exit and (max_weight >= 3 or len(matched) >= 3):
+                break
 
     if not matched:
         return DocumentScanResult(

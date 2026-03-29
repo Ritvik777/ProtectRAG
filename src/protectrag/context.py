@@ -28,6 +28,9 @@ class RunContext:
     dataset_version: str | None = None
     started_at: str = field(default_factory=_utc_now_iso)
     extra: dict[str, Any] = field(default_factory=dict)
+    # Structured log sampling (0.0–1.0). Metrics and callbacks are unaffected.
+    log_sample_rate_block: float = 1.0
+    log_sample_rate_warn: float = 1.0
 
     def to_log_fields(self) -> dict[str, Any]:
         out: dict[str, Any] = {

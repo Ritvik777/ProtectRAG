@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+
+from protectrag.async_api import AsyncScanFn
 from protectrag.callbacks import CallbackRegistry
 from protectrag.context import RunContext
 from protectrag.metrics import MetricsSink
-from protectrag.observability import emit_ingest_event, trace_ingest_screen
+from protectrag.observability import (
+    emit_ingest_event,
+    trace_ingest_screen,
+    trace_ingest_screen_async,
+)
 from protectrag.scanner import DocumentScanResult, InjectionSeverity, scan_document_for_injection
 
 
@@ -33,37 +40,18 @@ def _text_preview(text: str, max_len: int = 200) -> str:
     return t[: max_len - 3] + "..."
 
 
-def ingest_document(
+def _finalize_ingest(
     text: str,
     *,
-    document_id: str = "unknown",
-    block_on: InjectionSeverity = InjectionSeverity.HIGH,
-    warn_on: InjectionSeverity = InjectionSeverity.MEDIUM,
-    scan: Callable[[str, str], DocumentScanResult] | None = None,
-    context: RunContext | None = None,
-    metrics: MetricsSink | None = None,
-    callbacks: CallbackRegistry | None = None,
+    document_id: str,
+    scan_result: DocumentScanResult,
+    latency_ms: float,
+    block_on: InjectionSeverity,
+    warn_on: InjectionSeverity,
+    context: RunContext | None,
+    metrics: MetricsSink | None,
+    callbacks: CallbackRegistry | None,
 ) -> IngestResult:
-    """
-    Full ingest check with observability.
-
-    - BLOCK: severity >= block_on (default HIGH)
-    - ALLOW_WITH_WARNING: severity >= warn_on but < block_on
-    - ALLOW: below warn_on
-
-    Pass ``scan`` to use an LLM or hybrid scanner: ``scan=lambda t, d: hybrid.scan(t, document_id=d)``.
-    Default is heuristic-only :func:`~protectrag.scanner.scan_document_for_injection`.
-
-    ``context`` attaches run/project metadata to logs (experiment or deploy correlation).
-    ``metrics`` receives counters when implementing :class:`~protectrag.metrics.MetricsSink`.
-    ``callbacks`` fires user-defined hooks on block / warn / allow decisions.
-    """
-    def _run() -> DocumentScanResult:
-        if scan is None:
-            return scan_document_for_injection(text, document_id=document_id)
-        return scan(text, document_id)
-
-    scan_result, latency_ms = trace_ingest_screen(document_id, _run)
     preview = _text_preview(text)
 
     def _emit_metrics(decision: IngestDecision) -> None:
@@ -138,4 +126,95 @@ def ingest_document(
         scan=scan_result,
         message="Clean",
         latency_ms=round(latency_ms, 2),
+    )
+
+
+def ingest_document(
+    text: str,
+    *,
+    document_id: str = "unknown",
+    block_on: InjectionSeverity = InjectionSeverity.HIGH,
+    warn_on: InjectionSeverity = InjectionSeverity.MEDIUM,
+    scan: Callable[[str, str], DocumentScanResult] | None = None,
+    context: RunContext | None = None,
+    metrics: MetricsSink | None = None,
+    callbacks: CallbackRegistry | None = None,
+) -> IngestResult:
+    """
+    Full ingest check with observability.
+
+    - BLOCK: severity >= block_on (default HIGH)
+    - ALLOW_WITH_WARNING: severity >= warn_on but < block_on
+    - ALLOW: below warn_on
+
+    Pass ``scan`` to use an LLM or hybrid scanner: ``scan=lambda t, d: hybrid.scan(t, document_id=d)``.
+    Default is heuristic-only :func:`~protectrag.scanner.scan_document_for_injection`.
+
+    ``context`` attaches run/project metadata to logs (experiment or deploy correlation).
+    ``metrics`` receives counters when implementing :class:`~protectrag.metrics.MetricsSink`.
+    ``callbacks`` fires user-defined hooks on block / warn / allow decisions.
+    """
+
+    def _run() -> DocumentScanResult:
+        if scan is None:
+            return scan_document_for_injection(text, document_id=document_id)
+        return scan(text, document_id)
+
+    scan_result, latency_ms = trace_ingest_screen(document_id, _run)
+    return _finalize_ingest(
+        text,
+        document_id=document_id,
+        scan_result=scan_result,
+        latency_ms=latency_ms,
+        block_on=block_on,
+        warn_on=warn_on,
+        context=context,
+        metrics=metrics,
+        callbacks=callbacks,
+    )
+
+
+async def ingest_document_async(
+    text: str,
+    *,
+    document_id: str = "unknown",
+    block_on: InjectionSeverity = InjectionSeverity.HIGH,
+    warn_on: InjectionSeverity = InjectionSeverity.MEDIUM,
+    scan: Callable[[str, str], DocumentScanResult] | None = None,
+    async_scan: AsyncScanFn | None = None,
+    context: RunContext | None = None,
+    metrics: MetricsSink | None = None,
+    callbacks: CallbackRegistry | None = None,
+) -> IngestResult:
+    """
+    Async ingest pipeline. Use ``async_scan`` for :meth:`~protectrag.llm.LLMScanner.ascan` /
+    :meth:`~protectrag.llm.HybridScanner.ascan`; otherwise pass ``scan`` (runs in a thread pool)
+    or use the default heuristic scan in a thread pool.
+    """
+    if async_scan is not None and scan is not None:
+        raise ValueError("Pass at most one of scan and async_scan")
+
+    async def _run_async() -> DocumentScanResult:
+        if async_scan is not None:
+            return await async_scan(text, document_id)
+        loop = asyncio.get_running_loop()
+        if scan is None:
+
+            def _heuristic() -> DocumentScanResult:
+                return scan_document_for_injection(text, document_id=document_id)
+
+            return await loop.run_in_executor(None, _heuristic)
+        return await loop.run_in_executor(None, scan, text, document_id)
+
+    scan_result, latency_ms = await trace_ingest_screen_async(document_id, _run_async)
+    return _finalize_ingest(
+        text,
+        document_id=document_id,
+        scan_result=scan_result,
+        latency_ms=latency_ms,
+        block_on=block_on,
+        warn_on=warn_on,
+        context=context,
+        metrics=metrics,
+        callbacks=callbacks,
     )
