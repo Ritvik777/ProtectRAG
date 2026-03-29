@@ -333,11 +333,23 @@ Optional environment variables (LLM mode only — see [`.env.example`](.env.exam
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OPENAI_API_KEY` | — | Required for LLM calls |
+| `OPENAI_API_KEY` | — | Required for OpenAI-compatible Chat Completions |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible server |
-| `PROTECTRAG_LLM_MODEL` | `gpt-4o-mini` | Classification model |
+| `PROTECTRAG_LLM_PROVIDER` | `auto` | `openai` / `openai_compatible` forces Chat Completions; `anthropic` / `claude` uses Anthropic’s **Messages** API (`/v1/messages`). With `auto`, Anthropic is selected if `OPENAI_BASE_URL` contains `anthropic.com`. |
+| `ANTHROPIC_API_KEY` | — | Required when using Anthropic (unless you set `LLMScanConfig.api_key` in code) |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com/v1` | Anthropic API base (used when `PROTECTRAG_LLM_PROVIDER=anthropic`) |
+| `PROTECTRAG_LLM_MODEL` | `gpt-4o-mini` (OpenAI) or `claude-3-5-haiku-20241022` (Anthropic) | Classification model id for the chosen provider |
+| `PROTECTRAG_HYBRID_MAX_RECALL` | *(unset)* | If `true` / `1` / `yes` / `on`, **LLM runs on every chunk** (including heuristic-clean and heuristic-HIGH) — best chance to catch subtle RAG poisoning; **highest** cost/latency. Overrides the two flags below when set. |
+| `PROTECTRAG_HYBRID_LLM_ALWAYS` | *(unset)* | If `true` / `1` / `yes` / `on`, `HybridPolicy.from_env()` sets **run LLM on every chunk** (even when heuristics are clean) — higher cost/latency, fewer paraphrase misses |
+| `PROTECTRAG_HYBRID_SKIP_LLM_IF_HIGH` | *(unset)* | If `false` / `0` / `no` / `off`, hybrid still calls the LLM when heuristics are already HIGH (unusual) |
 
-`LLMScanConfig` also exposes **`http_max_connections`** / **`http_max_keepalive_connections`** for httpx pool sizing under load.
+`LLMScanConfig` also exposes **`llm_provider`**, **`anthropic_version`** (for the `anthropic-version` header), **`http_max_connections`** / **`http_max_keepalive_connections`** for httpx pool sizing under load.
+
+**Claude (Anthropic) in code:** `LLMScanConfig(llm_provider="anthropic", api_key="...", model="claude-3-5-haiku-20241022")` or `LLMScanner.from_env()` with `PROTECTRAG_LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`. The model must return a JSON object with `severity` / `confidence` / `brief` (same schema as OpenAI); the system prompt already asks for that.
+
+Use **`HybridScanner(llm, policy=HybridPolicy.from_env())`** to pick up the hybrid env vars.
+
+**Hybrid behavior:** by default the LLM is **not** called when heuristics return a clean `NONE` result, so anything rules miss is never shown to the model. For **strongest** coverage against disguised or novel attacks, set `PROTECTRAG_HYBRID_MAX_RECALL=true` (or `HybridPolicy.max_recall()` in code) so **every** chunk is classified by the model. Lighter option: `PROTECTRAG_HYBRID_LLM_ALWAYS=true` (LLM on clean chunks; heuristic-HIGH still skips the LLM by default). When heuristics are already **HIGH**, the LLM is skipped unless you use max-recall or `PROTECTRAG_HYBRID_SKIP_LLM_IF_HIGH=false`.
 
 Heuristic-only usage needs **none** of these.
 
@@ -387,7 +399,8 @@ Works with **every** vector store — Pinecone, Qdrant, Weaviate, Milvus, pgvect
 ## Limitations
 
 - Heuristic rules are pattern-based and can miss novel attack styles or rarely flag benign text.
-- The LLM classifier is stronger but costs money and is not perfect.
+- **Default hybrid mode is not a full second line of defense:** if heuristics say `NONE`, the LLM is skipped, so sophisticated malicious text that evades regex never reaches the classifier. Use **`PROTECTRAG_HYBRID_MAX_RECALL=true`** (or `HybridPolicy.max_recall()`) when you need the model on every chunk; expect higher cost and some false positives.
+- The LLM classifier can still miss adversarial or deeply hidden instructions; it is **not** a cryptographic guarantee—combine with trusted data sources, access control, and human review for high-risk corpora.
 - Long texts are truncated (head + tail) before sending to the LLM.
 - No built-in web dashboard — use notebooks, Grafana, or OTel backends.
 

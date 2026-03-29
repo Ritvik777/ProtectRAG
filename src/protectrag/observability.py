@@ -28,10 +28,11 @@ except Exception:  # pragma: no cover - optional dependency
 
 _RULE_DESCRIPTIONS: dict[str, str] = {
     "instruction_override": "Text attempts to override or replace the model's instructions",
+    "instruction_override_paraphrase": "Instruction override phrased indirectly (forget/disregard/pay no attention, etc.)",
     "instruction_override_multilang": "Instruction override in a non-English language",
     "role_delimiter": "Fake system/assistant/user role markers injected into content",
     "prompt_leak_request": "Attempts to extract or reveal the system prompt",
-    "data_exfiltration": "Attempts to send retrieved data to an external URL",
+    "data_exfiltration": "Attempts to exfiltrate retrieved data (URL, email, etc.)",
     "fake_tool_or_api": "Fake function call or tool invocation injected into content",
     "encoding_trick": "Obfuscation via base64, rot13, hex, or similar encoding",
     "unicode_manipulation": "Invisible or bidirectional Unicode characters used to hide content",

@@ -27,8 +27,9 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
         "instruction_override",
         re.compile(
             r"(?i)\b("
-            r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|text|context|prompts?)|"
+            r"ignore\s+((all|the)\s+)?(previous|prior|above)\s+(instructions?|text|context|prompts?)|"
             r"disregard\s+(all\s+)?(previous|prior|above)|"
+            r"disregard\s+(the\s+)?(safety|security)\s+(guidelines?|rules?|policies|measures|controls)\b|"
             r"forget\s+(everything|all)\s+(above|before|you\s+know)|"
             r"do\s+not\s+follow\s+(the\s+)?(previous|above|prior)|"
             r"stop\s+being\s+(a|an)\s+\w+\s+assistant|"
@@ -38,6 +39,25 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
             r"act\s+as\s+(if\s+)?(you\s+are\s+)?(a|an|the)\b|"
             r"from\s+now\s+on\s+(you|your)\b|"
             r"switch\s+to\s+\w+\s+mode"
+            r")\b",
+        ),
+        3,
+    ),
+    # ── Instruction override paraphrases (gaps in strict phrasing above) ───
+    (
+        "instruction_override_paraphrase",
+        re.compile(
+            r"(?i)\b("
+            r"forget\s+(the|all|those|any|my|your)\s+instructions?|"
+            r"forget\s+about\s+(the\s+)?instructions?|"
+            r"disregard\s+(the\s+)?(previous|prior|above)\s+instructions?|"
+            r"discard\s+(the\s+)?(previous|prior|above)\s+instructions?|"
+            r"pay\s+no\s+attention\s+to\s+(the\s+)?(previous|prior|above|earlier)\s+instructions?|"
+            r"ignore\s+(everything|anything)\s+(you\s+)?(were\s+)?told(\s+before|\s+earlier|\s+previously)?\b|"
+            r"ignore\s+what\s+((i\s+was|you\s+were|we\s+were)\s+told|(i|you|we)\s+said)\s+before|"
+            r"ignore\s+the\s+instructions\b|"
+            r"your\s+(new|real|actual|true)\s+instructions\s+(are|is)\b|"
+            r"(these|this)\s+instructions\s+(replace|supersede|override)\s+(the\s+)?(previous|prior|above|earlier)\b"
             r")\b",
         ),
         3,
@@ -72,6 +92,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
             r"(?i)("
             r"<\|?(?:system|assistant|user|developer|im_start|im_end)\|?>|"
             r"\[?\s*(?:SYSTEM|ASSISTANT|USER|DEVELOPER)\s*\]?\s*:|"
+            r"\[(?:SYSTEM|ASSISTANT|USER|DEVELOPER)\]\s+(?:new\s+)?directive\s*:|"
             r"^###\s*(?:system|assistant|user|developer)\s*$|"
             r"\bEND_OF_(?:SYSTEM|USER)_(?:PROMPT|MESSAGE)\b|"
             r"---\s*(?:SYSTEM|ASSISTANT|USER)\s*---"
@@ -88,6 +109,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
             r"repeat\s+(your|the)\s+(system\s+)?prompt|"
             r"print\s+(your\s+)?(system\s+)?prompt|"
             r"output\s+(your\s+)?(entire\s+)?(system\s+)?prompt|"
+            r"output\s+your\s+(?:[\w'-]+\s+){0,4}system\s+prompt\b|"
             r"show\s+(me\s+)?(your\s+)?(initial|original|hidden)\s+(instructions?|prompt)|"
             r"what\s+(are|were)\s+your\s+(original\s+)?instructions|"
             r"reveal\s+(your\s+)?(system|secret|hidden)\s+(prompt|instructions?)|"
@@ -102,6 +124,8 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
         re.compile(
             r"(?i)("
             r"append\s+(all|the|every)\s+.{0,30}(context|retriev|chunk|document).{0,30}(to|into|at)\s+(https?://|the\s+url)|"
+            r"email\s+.{0,50}(context|chunks?|documents?|data|retriev).{0,40}(to|at)\s+\S+@\S+|"
+            r"retrieved\s+.{0,25}context.{0,40}(to|at)\s+\S+@\S+|"
             r"send\s+(all|the|every)\s+.{0,30}(to|via)\s+https?://|"
             r"include\s+(all|every)\s+retriev.{0,20}in\s+(your|the)\s+(response|output|reply)|"
             r"(fetch|load|request|visit|navigate)\s+(https?://\S+)|"
@@ -167,7 +191,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
             r"javascript\s*:|"
             r"on(load|error|click|mouseover)\s*=|"
             r"<object[\s>].*data\s*=|"
-            r"<!--\s*(ignore|system|instructions?|override)"
+            r"<!--\s*(ignore|system|instructions?|override|hidden|for\s+the\s+model|model\s+only)"
             r")",
         ),
         2,
@@ -179,7 +203,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
             r"(?i)("
             r"!\[.*?\]\([^)]*\b(onerror|onload|javascript)\b|"  # image with event handler
             r"\[.*?\]\(data:|"  # data URI link
-            r"<!--\s*(system|ignore|override|prompt)"
+            r"<!--\s*(system|ignore|override|prompt|hidden|for\s+the\s+model|model\s+only)"
             r")",
         ),
         2,
@@ -190,6 +214,8 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
         re.compile(
             r"(?i)\b("
             r"when\s+(the\s+)?(user|human|person)\s+(asks?|quer|request|mention|say|type)\s+.{0,40}(instead|reply|respond|answer|say|tell)\b|"
+            r"when\s+summarizing\s+for\s+the\s+user.{0,150}always\s+(append|include|add|prefix|suffix|state|claim|insist)\b|"
+            r"always\s+append\s*:[\s\S]{0,400}?even\s+if\s+untrue\b|"
             r"if\s+(anyone|someone|the\s+user)\s+(asks?|quer).{0,40}(respond|reply|say|tell|answer)\b|"
             r"whenever\s+(this|the)\s+(text|chunk|document|passage)\s+is\s+(retriev|return|shown|used)|"
             r"upon\s+retrieval\s+(of\s+this|,)\s*(respond|reply|say|output)"
@@ -203,7 +229,10 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
         re.compile(
             r"(?i)\b("
             r"(this|the)\s+is\s+part\s+\d+\s+of\s+\d+|"
+            r"\bpart\s+\d+\s+of\s+\d+\b|"
             r"combine\s+(this|these)\s+(with|and)\s+(the\s+)?(next|other|previous)\s+(chunk|part|segment)|"
+            r"combine\s+the\s+next\s+chunks?\b|"
+            r"execute\s+the\s+instruction\s+in\s+chunk\s+\d+|"
             r"continued\s+(from|in)\s+(the\s+)?(previous|next)\s+(chunk|part|section)|"
             r"assemble\s+(the\s+)?(full\s+)?(instruction|payload|command)"
             r")\b",
