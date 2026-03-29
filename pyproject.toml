@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "protectrag"
-version = "0.6.0"
+version = "0.6.1"
 description = "Evals and observability for RAG: prompt-injection screening on stored documents"
 readme = "README.md"
 license = "Apache-2.0"

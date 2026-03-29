@@ -20,7 +20,7 @@ _logger = logging.getLogger("protectrag")
 try:
     from opentelemetry import trace  # type: ignore
 
-    _tracer = trace.get_tracer("protectrag", "0.6.0")
+    _tracer = trace.get_tracer("protectrag", "0.6.1")
     _HAS_OTEL = True
 except Exception:  # pragma: no cover - optional dependency
     _tracer = None
